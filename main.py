@@ -9,7 +9,7 @@ from threading import Thread
 # ================== CONFIG ==================
 TARGET_CHANNEL_ID = 1248343007913054209   # CHANGE THIS TO YOUR CHANNEL ID
 IGNORE_USER_IDS = [1277282990782677034]                     # Add user IDs to ignore (e.g. [12345])
-EAT_INTERVAL_HOURS = 0.00278  # Every ~10 seconds
+EAT_INTERVAL_HOURS = 1
 LEADERBOARD_INTERVAL_HOURS = 6
 
 # ================== FUNNY REPLACEMENT WORDS ==================

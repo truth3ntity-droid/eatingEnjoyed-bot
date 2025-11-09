@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import random
 import os
+import asyncio
 from collections import defaultdict
 from flask import Flask
 from threading import Thread
@@ -14,7 +15,7 @@ from config import (
     LEADERBOARD_INTERVAL_HOURS
 )
 
-# === FUNNY REPLACEMENT WORDS ===
+# === FUNNY WORDS ===
 FUNNY_WORDS = [
     "STEAKED!",
     "BEEF BLAST!",
@@ -38,13 +39,13 @@ FUNNY_WORDS = [
     "BANANA BLOWOUT!"
 ]
 
-# === BOT SETUP ===
+# === BOT ===
 intents = discord.Intents.default()
 intents.message_content = True
 intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# === DATA STORAGE ===
+# === DATA ===
 eaten_count = defaultdict(int)
 last_eaten_message = None
 DATA_FILE = "eaten_data.txt"
@@ -64,8 +65,8 @@ def save_data():
         for uid, cnt in eaten_count.items():
             f.write(f"{uid}:{cnt}\n")
 
-# === EAT & DELETE FUNCTION (FIXED!) ===
-async def eat_and_replace():
+# === EAT & DELETE (FIXED!) ===
+async def eat_and_message():
     global last_eaten_message
     channel = bot.get_channel(TARGET_CHANNEL_ID)
     if not channel:
@@ -73,39 +74,47 @@ async def eat_and_replace():
         return
 
     try:
-        msgs = [m async for m in channel.history(limit=100)]
+        # Get messages
+        msgs = [m async for m in channel.history(limit=50, oldest_first=False)]
+        
+        # Filter: not bot, has content/sticker/image, not ignored, not same as last
         candidates = [
             m for m in msgs
             if not m.author.bot
             and (m.content or m.stickers or m.attachments)
-            and (last_eaten_message is None or m.id != last_eaten_message.id)
             and m.author.id not in IGNORE_USER_IDS
+            and (last_eaten_message is None or m.id != last_eaten_message.id)
         ]
 
         if not candidates:
+            print("No messages to eat.")
             return
 
+        # Pick ONE
         msg = random.choice(candidates)
+        author_name = msg.author.display_name
 
-        # DELETE THE MESSAGE
+        # DELETE
         try:
             await msg.delete()
-            print(f"Deleted message from {msg.author.name}")
+            print(f"DELETED: '{msg.content[:30]}' from {author_name}")
         except Exception as e:
-            print(f"Failed to delete: {e}")
+            print(f"Delete failed: {e}")
 
-        # SEND FUNNY REPLACEMENT
+        # SEND FUNNY WORD
         funny = random.choice(FUNNY_WORDS)
-        await channel.send(funny)
+        await channel.send(f"{funny}")
 
-        # COUNT IT
+        # SAVE
         eaten_count[msg.author.id] += 1
         last_eaten_message = msg
         save_data()
-        print(f"Eaten & replaced: {funny}")
+
+        # Prevent spam
+        await asyncio.sleep(1)
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Eat error: {e}")
 
 # === LEADERBOARD ===
 async def post_leaderboard():
@@ -119,11 +128,7 @@ async def post_leaderboard():
     for i, (uid, cnt) in enumerate(top, 1):
         user = bot.get_user(uid)
         name = user.display_name if user else f"User {uid}"
-        embed.add_field(
-            name=f"{medals[i-1]} - {name}",
-            value=f"`{cnt}` times eaten",
-            inline=False
-        )
+        embed.add_field(name=f"{medals[i-1]} - {name}", value=f"`{cnt}` eaten", inline=False)
     embed.set_footer(text="eatingEnjoyed.1984")
     await channel.send(embed=embed)
 
@@ -131,18 +136,17 @@ async def post_leaderboard():
 @tasks.loop(hours=EAT_INTERVAL_HOURS)
 async def eat_task():
     await bot.wait_until_ready()
-    await eat_and_replace()
+    await eat_and_message()
 
 @tasks.loop(hours=LEADERBOARD_INTERVAL_HOURS)
 async def leaderboard_task():
     await bot.wait_until_ready()
     await post_leaderboard()
 
-# === BOT EVENTS & COMMANDS ===
+# === EVENTS ===
 @bot.event
 async def on_ready():
-    print(f"{bot.user} is HUNGRY and ready!")
-    print(f"Monitoring channel: {TARGET_CHANNEL_ID}")
+    print(f"{bot.user} is HUNGRY!")
     load_data()
     eat_task.start()
     leaderboard_task.start()
@@ -151,46 +155,43 @@ async def on_ready():
 @commands.is_owner()
 async def eatnow(ctx):
     if ctx.channel.id != TARGET_CHANNEL_ID:
-        await ctx.send("Only in target channel!")
+        await ctx.send("Wrong channel!")
         return
-    await eat_and_replace()
-    await ctx.send("NOM! (Forced eat)")
+    await eat_and_message()
+    await ctx.send("NOM! (Forced)")
 
 @bot.command()
 @commands.is_owner()
 async def leaderboard(ctx):
     if ctx.channel.id != TARGET_CHANNEL_ID:
-        await ctx.send("Only in target channel!")
+        await ctx.send("Wrong channel!")
         return
     await post_leaderboard()
 
 @bot.command()
 async def mystats(ctx):
     if ctx.channel.id != TARGET_CHANNEL_ID:
-        await ctx.send("Only in target channel!")
+        await ctx.send("Wrong channel!")
         return
     count = eaten_count.get(ctx.author.id, 0)
-    await ctx.send(f"Your messages have been **EATEN {count} times**!")
+    await ctx.send(f"You've been **EATEN {count} times**!")
 
-# === KEEP-ALIVE (RENDER) ===
+# === KEEP-ALIVE ===
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot is alive! NOM NOM"
+    return "Bot alive! NOM"
 
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
 
-flask_thread = Thread(target=run_flask)
-flask_thread.daemon = True
-flask_thread.start()
-print(f"Flask running on port {os.environ.get('PORT', 10000)}")
+Thread(target=run_flask, daemon=True).start()
 
-# === START BOT ===
+# === START ===
 TOKEN = os.getenv("BOT_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print("ERROR: Add BOT_TOKEN in Render Environment Variables!")
+    print("ERROR: Add BOT_TOKEN in Render!")

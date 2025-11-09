@@ -6,43 +6,45 @@ from collections import defaultdict
 from flask import Flask
 from threading import Thread
 
-# ================== CONFIG ==================
-TARGET_CHANNEL_ID = 1248343007913054209   # CHANGE THIS TO YOUR CHANNEL ID
-IGNORE_USER_IDS = [1277282990782677034]                     # Add user IDs to ignore (e.g. [12345])
-EAT_INTERVAL_HOURS = 1
-LEADERBOARD_INTERVAL_HOURS = 6
+# === CONFIG ===
+from config import (
+    TARGET_CHANNEL_ID,
+    IGNORE_USER_IDS,
+    EAT_INTERVAL_HOURS,
+    LEADERBOARD_INTERVAL_HOURS
+)
 
-# ================== FUNNY REPLACEMENT WORDS ==================
+# === FUNNY REPLACEMENT WORDS ===
 FUNNY_WORDS = [
-    "🍖 **STEAKED!**",
-    "🥩 **BEEF BLAST!**",
-    "🍔 **BURGER BOMB!**",
-    "🌮 **TACO TORNADO!**",
-    "🍕 **PIZZA PANIC!**",
-    "🍗 **CHICKEN CHAOS!**",
-    "🥐 **CROISSANT CRASH!**",
-    "🍩 **DONUT DOOM!**",
-    "🍫 **CHOCO COLLAPSE!**",
-    "🍟 **FRY FIASCO!**",
-    "🍰 **CAKE CATASTROPHE!**",
-    "🥪 **SANDWICH SAGA!**",
-    "🍜 **NOODLE NIGHTMARE!**",
-    "🌭 **HOTDOG HORROR!**",
-    "🍦 **ICE CREAM INVASION!**",
-    "🥞 **PANCAKE POUNCE!**",
-    "🍿 **POPCORN PANDEMONIUM!**",
-    "🥗 **SALAD STORM!**",
-    "🍉 **WATERMELON WHAM!**",
-    "🍌 **BANANA BLOWOUT!**"
+    "STEAKED!",
+    "BEEF BLAST!",
+    "BURGER BOMB!",
+    "TACO TORNADO!",
+    "PIZZA PANIC!",
+    "CHICKEN CHAOS!",
+    "CROISSANT CRASH!",
+    "DONUT DOOM!",
+    "CHOCO COLLAPSE!",
+    "FRY FIASCO!",
+    "CAKE CATASTROPHE!",
+    "SANDWICH SAGA!",
+    "NOODLE NIGHTMARE!",
+    "HOTDOG HORROR!",
+    "ICE CREAM INVASION!",
+    "PANCAKE POUNCE!",
+    "POPCORN PANDEMONIUM!",
+    "SALAD STORM!",
+    "WATERMELON WHAM!",
+    "BANANA BLOWOUT!"
 ]
 
-# ================== BOT SETUP ==================
+# === BOT SETUP ===
 intents = discord.Intents.default()
 intents.message_content = True
 intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ================== DATA STORAGE ==================
+# === DATA STORAGE ===
 eaten_count = defaultdict(int)
 last_eaten_message = None
 DATA_FILE = "eaten_data.txt"
@@ -62,7 +64,7 @@ def save_data():
         for uid, cnt in eaten_count.items():
             f.write(f"{uid}:{cnt}\n")
 
-# ================== EAT & REPLACE FUNCTION ==================
+# === EAT & DELETE FUNCTION (FIXED!) ===
 async def eat_and_replace():
     global last_eaten_message
     channel = bot.get_channel(TARGET_CHANNEL_ID)
@@ -71,7 +73,6 @@ async def eat_and_replace():
         return
 
     try:
-        # Get recent messages
         msgs = [m async for m in channel.history(limit=100)]
         candidates = [
             m for m in msgs
@@ -86,26 +87,27 @@ async def eat_and_replace():
 
         msg = random.choice(candidates)
 
-        # Delete the original message
+        # DELETE THE MESSAGE
         try:
             await msg.delete()
-        except:
-            pass  # Already gone or no permission
+            print(f"Deleted message from {msg.author.name}")
+        except Exception as e:
+            print(f"Failed to delete: {e}")
 
-        # Send funny replacement
+        # SEND FUNNY REPLACEMENT
         funny = random.choice(FUNNY_WORDS)
         await channel.send(funny)
 
-        # Count it
+        # COUNT IT
         eaten_count[msg.author.id] += 1
         last_eaten_message = msg
         save_data()
-        print(f"Eaten & replaced message from {msg.author.name} → {funny}")
+        print(f"Eaten & replaced: {funny}")
 
     except Exception as e:
         print(f"Error: {e}")
 
-# ================== LEADERBOARD ==================
+# === LEADERBOARD ===
 async def post_leaderboard():
     channel = bot.get_channel(TARGET_CHANNEL_ID)
     if not channel or not eaten_count:
@@ -125,7 +127,7 @@ async def post_leaderboard():
     embed.set_footer(text="eatingEnjoyed.1984")
     await channel.send(embed=embed)
 
-# ================== TASKS ==================
+# === TASKS ===
 @tasks.loop(hours=EAT_INTERVAL_HOURS)
 async def eat_task():
     await bot.wait_until_ready()
@@ -136,7 +138,7 @@ async def leaderboard_task():
     await bot.wait_until_ready()
     await post_leaderboard()
 
-# ================== BOT EVENTS & COMMANDS ==================
+# === BOT EVENTS & COMMANDS ===
 @bot.event
 async def on_ready():
     print(f"{bot.user} is HUNGRY and ready!")
@@ -170,7 +172,7 @@ async def mystats(ctx):
     count = eaten_count.get(ctx.author.id, 0)
     await ctx.send(f"Your messages have been **EATEN {count} times**!")
 
-# ================== KEEP-ALIVE (RENDER) ==================
+# === KEEP-ALIVE (RENDER) ===
 app = Flask('')
 
 @app.route('/')
@@ -186,7 +188,7 @@ flask_thread.daemon = True
 flask_thread.start()
 print(f"Flask running on port {os.environ.get('PORT', 10000)}")
 
-# ================== START BOT ==================
+# === START BOT ===
 TOKEN = os.getenv("BOT_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
